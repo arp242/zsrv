@@ -2,6 +2,8 @@ package main
 
 var listen = "127.0.0.1:8082"
 
+var certdir = "/home/martin"
+
 var domainRedirects = map[string]string{
 	"www.arp242.net": "arp242.net",
 }

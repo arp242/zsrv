@@ -80,5 +80,6 @@ func static(dir string) chi.Router {
 		panic(fmt.Sprintf("packmap[%q] is nil", dir))
 	}
 	r.Get("/*", zhttp.NewStatic(dir, dir, 86400, p).ServeHTTP)
+	zhttp.MountACME(r, certdir)
 	return r
 }
