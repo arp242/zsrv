@@ -1,6 +1,6 @@
 package main
 
-var listen = "127.0.0.1:8082"
+var listen = "127.0.0.1:8000"
 
 var certdir = "/home/martin"
 
