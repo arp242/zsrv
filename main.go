@@ -1,38 +1,28 @@
-//go:generate go run gen.go
-
 package main
 
 import (
-	"errors"
+	"embed"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
 	"strings"
 
-	"github.com/go-chi/chi"
 	"zgo.at/zhttp"
-	"zgo.at/zlog"
+	"zgo.at/zstd/znet"
 )
 
 var version = ""
 
+//go:embed www/*
+var webroot embed.FS
+
 func main() {
-	zhttp.ErrPage = func(w http.ResponseWriter, r *http.Request, code int, reported error) {
-		w.WriteHeader(code)
-		if code >= 500 {
-			zlog.FieldsRequest(r).Error(reported)
-			reported = errors.New("internal server error")
-		} else {
-			zlog.Field("code", code).Print(reported.Error())
-		}
-
-		fmt.Fprintf(w, "%d: %s", code, reported)
-	}
-
 	zhttp.Static404 = func(w http.ResponseWriter, r *http.Request) {
 		r.RequestURI = strings.ToLower(r.RequestURI)
 
 		// Check redirect.
-		if redirs := redirects[zhttp.RemovePort(strings.ToLower(r.Host))]; redirs != nil {
+		if redirs := redirects[znet.RemovePort(strings.ToLower(r.Host))]; redirs != nil {
 			// Exact match.
 			if r, ok := redirs[r.RequestURI]; ok {
 				w.Header().Add("Location", r)
@@ -56,11 +46,18 @@ func main() {
 		fmt.Fprintf(w, `Page not found. <a href="/">Back home</a>`)
 	}
 
-	var domains []string
-	routers := make(map[string]chi.Router)
-	for d := range packmap {
-		domains = append(domains, d)
-		routers[d] = static(d)
+	var (
+		domains []string
+		routers = make(map[string]http.Handler)
+	)
+	dirs, err := fs.ReadDir(webroot, "www")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "zsrv: reading www: %s", err)
+		os.Exit(1)
+	}
+	for _, d := range dirs {
+		domains = append(domains, d.Name())
+		routers[strings.ReplaceAll(d.Name(), "STAR", "*")] = static(d.Name())
 	}
 
 	for k, v := range domainRedirects {
@@ -69,17 +66,30 @@ func main() {
 
 	fmt.Printf("zsrv %s listening on %s\n", version, listen)
 	fmt.Printf("    serving domains: %s\n", domains)
-	zhttp.Serve(&http.Server{Addr: listen, Handler: zhttp.HostRoute(routers)}, nil)
+	w, err := zhttp.Serve(0, nil, &http.Server{
+		Addr:    listen,
+		Handler: zhttp.HostRoute(routers),
+	})
+	if err != nil {
+		panic(err)
+	}
+	<-w
+	<-w
 }
 
 // TODO: be smarter about cache (per-file and per-filetype)
-func static(dir string) chi.Router {
-	r := chi.NewRouter()
-	p := packmap[dir]
-	if p == nil {
-		panic(fmt.Sprintf("packmap[%q] is nil", dir))
+func static(dir string) http.Handler {
+	fsys, err := fs.Sub(webroot, "www/"+dir)
+	if err != nil {
+		panic(err)
 	}
-	r.Get("/*", zhttp.NewStatic(dir, dir, 86400, p).ServeHTTP)
-	zhttp.MountACME(r, certdir)
-	return r
+
+	stat := zhttp.NewStatic("", fsys, map[string]int{"": 86400})
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "" || r.URL.Path == "/" {
+			r.URL.Path = "/index.html"
+		}
+		stat.ServeHTTP(w, r)
+	})
 }

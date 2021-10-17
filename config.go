@@ -5,7 +5,7 @@ var listen = "127.0.0.1:8000"
 var certdir = "/home/martin"
 
 var domainRedirects = map[string]string{
-	"www.arp242.net": "arp242.net",
+	"arp242.net": "www.arp242.net",
 }
 
 // Redirect pages on a domain.
@@ -16,8 +16,7 @@ var domainRedirects = map[string]string{
 //
 // Wildcards (*) can only be at the end, and {} is replaced with the contents.
 var redirects = map[string]map[string]string{
-	//"arp242.net": map[string]string{
-	"new.arp242.net": map[string]string{
+	"www.arp242.net": map[string]string{
 		// Redirect old /weblog/ paths.
 		"/weblog*": "/{}",
 
